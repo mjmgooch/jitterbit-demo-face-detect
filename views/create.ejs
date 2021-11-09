@@ -1,0 +1,246 @@
+<%- include('common/header.ejs') %>
+
+    <!-- Page content-->
+    <div class="container-fluid">
+        <h1 class="mt-4">Create Person</h1>
+        <p>Use the Jitterbit API manager to create a new Person record and train the Face detect Machine Learning model to recognise the face.</p>
+
+
+        <div class="card">
+            <h5 class="card-header">Step 1 - Create New Person</h5>
+            <div class="card-body">
+            <h5 class="card-title">Enter the name of a new person.</h5>
+            <p class="card-text">This person will need to be created in Salesforce once you receive the persisted face ID.</p>
+        
+        <form id="new-person-form" class="row g-3 needs-validation" novalidate>
+            <label for="validationCustom01" for="exampleDataList" class="form-label">Please create a person</label>
+                <div class="col-md-4">
+                    <label for="validationCustom01" class="form-label">Person Name:</label>
+                    <input placeholder="John Smith" type="text" class="form-control" id="person-name" required>
+                    <div class="invalid-feedback">
+                        Please enter a person name.
+                    </div>
+                </div>
+
+            </div>
+        </form>
+        </div>
+
+        <div class="card mt-5">
+            <h5 class="card-header">Step 2 - Capture Photo</h5>
+            <div class="card-body">
+            <h5 class="card-title">Capture a photo of a your the persons face using your webcam.</h5>
+            <p class="card-text">Ensure you allow your browser access to your webcam in order for this to work and ensure there is only 1 person in the photo.</p>
+
+             <div class="row">
+                <div class="col-sm">
+                    <div class="text-center">
+                        <div class="camera">
+                            <video id="video" class="img-thumbnail">Video stream not available.</video>
+                        </div>
+                    </div>
+                    <canvas id="canvas">
+                    </canvas>
+                </div>
+                <div class="col-sm">
+                    <div class="text-center">
+                        <div class="output">
+                            <canvas id="photo" width="320" height="240" style="border:1px solid #d3d3d3;" class="img-thumbnail">
+                                Your browser does not support the HTML5 canvas tag.</canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+                <button class="btn btn-primary" id="startbutton">Take photo</button>
+            </div>
+        </div>
+
+        <div class="card mt-5 mb-5">
+            <h5 class="card-header">Step 3 - Receive Azure Person ID</h5>
+            <div class="card-body">
+            <h5 class="card-title">Please enter this Person ID against your salesforce user</h5>
+            <figure class="text-center">
+                <h1 id="success" class="display-1"></h1>
+                <p id="person-id" class="lead success"></p>
+            </figure>
+
+            </div>
+        </div>
+
+    
+
+        <script>
+            (function() {
+            // The width and height of the captured photo. We will set the
+            // width to the value defined here, but the height will be
+            // calculated based on the aspect ratio of the input stream.
+
+            var width = 320;    // We will scale the photo width to this
+            var height = 0;     // This will be computed based on the input stream
+
+            // |streaming| indicates whether or not we're currently streaming
+            // video from the camera. Obviously, we start at false.
+
+            var streaming = false;
+
+            // The various HTML elements we need to configure or control. These
+            // will be set by the startup() function.
+
+            var video = null;
+            var canvas = null;
+            var photo = null;
+            var startbutton = null;
+
+            function startup() {
+                video = document.getElementById('video');
+                canvas = document.getElementById('canvas');
+                photo = document.getElementById('photo');
+                startbutton = document.getElementById('startbutton');
+
+                navigator.mediaDevices.getUserMedia({video: true, audio: false})
+                .then(function(stream) {
+                video.srcObject = stream;
+                video.play();
+                })
+                .catch(function(err) {
+                console.log("An error occurred: " + err);
+                });
+
+                video.addEventListener('canplay', function(ev){
+                if (!streaming) {
+                    height = video.videoHeight / (video.videoWidth/width);
+                
+                    // Firefox currently has a bug where the height can't be read from
+                    // the video, so we will make assumptions if this happens.
+                
+                    if (isNaN(height)) {
+                    height = width / (4/3);
+                    }
+                
+                    video.setAttribute('width', width);
+                    video.setAttribute('height', height);
+                    canvas.setAttribute('width', width);
+                    canvas.setAttribute('height', height);
+                    streaming = true;
+                }
+                }, false);
+
+            
+                startbutton.addEventListener('click', function(ev){
+
+                    //clear the set fields
+                    document.getElementById("success").innerHTML = "";
+                    document.getElementById("person-id").innerHTML = "";
+
+                    //validate the form
+                    var form = document.getElementById("new-person-form")
+                    if (!form.checkValidity()) {
+                            event.preventDefault()
+                            event.stopPropagation()
+                        } else {
+                            getResponse(); //Call the new function
+                            ev.preventDefault();
+                        }
+                        form.classList.add('was-validated')
+                                 
+                }, false);
+                    
+                clearphoto();
+            }
+
+            function getResponse() {
+
+                var capture = takepicture(); //capture the image
+
+                //grab the user input
+                var person = document.getElementById("person-name");
+                var personName = person.value;
+                console.log(personName);
+
+                //setup the data object to be sent as part of the POST request
+                var data = {
+                    personName: personName,
+                    image: capture
+                }
+                console.log(data);
+
+                //make the POST request to jitterbit API
+                $.ajax({
+                    type: 'POST',
+                    url: 'https://JitterbitTRIAL385622.jitterbit.eu/defaultUrlPrefix/1/faceAddNewFace',
+                    contentType: "json",
+                    data: JSON.stringify(data),
+                    success: function(response) { 
+                        var personId = response.personId;
+                        console.log(response);
+                        
+                        //Set the HTML elements if data is returned
+                        if(personId) {
+                            document.getElementById("success").innerHTML = "Success";
+                            document.getElementById("person-id").innerHTML = personId;
+                        } else {
+                            document.getElementById("success").innerHTML = "Unsuccessful, Please try again";
+                            document.getElementById("person-id").innerHTML = "";
+                        };
+                        
+                    },
+                    error: function(xhr, status, err) {
+                        console.log(xhr.responseText);
+                        alert("Egg on my face! Something went wrong. Usually due to there being 2 faces in the images!");
+                    }
+                });
+            }
+
+            // Fill the photo with an indication that none has been
+            // captured.
+
+            function clearphoto() {
+                var context = canvas.getContext('2d');
+                context.fillStyle = "#AAA";
+                context.fillRect(0, 0, canvas.width, canvas.height);
+
+                var data = canvas.toDataURL('image/jpeg');
+                photo.setAttribute('background.src', data);
+            }
+            
+            // Capture a photo by fetching the current contents of the video
+            // and drawing it into a canvas, then converting that to a PNG
+            // format data URL. By drawing it on an offscreen canvas and then
+            // drawing that to the screen, we can change its size and/or apply
+            // other changes before drawing it.
+
+            function takepicture() {
+                var context = canvas.getContext('2d');
+                if (width && height) {
+                canvas.width = width;
+                canvas.height = height;
+                context.drawImage(video, 0, 0, width, height);
+                
+                var data = canvas.toDataURL('image/jpeg');
+
+                var photocanvas = document.getElementById("photo");
+                var ctx = photocanvas.getContext("2d");
+
+                var image = new Image();
+                image.onload = function() {
+                    ctx.drawImage(image, 0, 0);
+                };
+                image.src = data;
+                //photo.setAttribute('background.src', data);
+                return data;
+                } else {
+                clearphoto();
+                }
+            }
+
+            // Set up our event listener to run the startup process
+            // once loading is complete.
+            window.addEventListener('load', startup, false);
+            })();
+        </script>
+
+
+    </div>
+
+<%- include('common/footer.ejs') %>

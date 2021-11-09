@@ -1,0 +1,268 @@
+<%- include('common/header.ejs') %>
+
+    <!-- Page content-->
+    <div class="container-fluid">
+        <h1 class="mt-4">Verify</h1>
+        <p>Use the Jitterbit API manager and workflows combined with Microsoft Azure Cognitive Services Face API to verify a human face provided in an image against a verified user photo.</p>
+
+
+        <div class="card">
+            <h5 class="card-header">Step 1 - Select a Salesforce user</h5>
+            <div class="card-body">
+            <h5 class="card-title">Select a user from Salesforce to verify.</h5>
+            <p class="card-text">Please note, this is a demo and will only return data from the chosen salesforce developer account.</p>
+        
+        <form id="salesforce-user-form" class="row g-3 needs-validation" novalidate>
+            <label for="validationCustom01" for="exampleDataList" class="form-label">Please select a Salesforce user</label>
+                <select class="form-select" id="datalistOptions" required>
+                    <option selected disabled value="">Choose...</option>
+                    <% users.forEach(function(user){ %>
+                        <option value="<%= user.PersonId %>"><%= user.Username %></option>
+                    <% }); %>
+                </select>
+
+                <div class="invalid-feedback">
+                    Please select a valid state.
+                </div>
+                </div>
+            </div>
+        </form>
+
+        <div class="card mt-5">
+            <h5 class="card-header">Step 2 - Capture Photo</h5>
+            <div class="card-body">
+            <h5 class="card-title">Capture a photo of a your face using your webcam.</h5>
+            <p class="card-text">Ensure you allow your browser access to your webcam in order for this to work.</p>
+
+             <div class="row">
+                <div class="col-sm">
+                    <div class="text-center">
+                        <div class="camera">
+                            <video id="video" class="img-thumbnail">Video stream not available.</video>
+                        </div>
+                    </div>
+                    <canvas id="canvas">
+                    </canvas>
+                </div>
+                <div class="col-sm">
+                    <div class="text-center">
+                        <div class="output">
+                            <canvas id="photo" width="320" height="240" style="border:1px solid #d3d3d3;" class="img-thumbnail">
+                                Your browser does not support the HTML5 canvas tag.</canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+                <button class="btn btn-primary" id="startbutton">Take photo</button>
+            </div>
+        </div>
+
+        <div class="card mt-5 mb-5">
+            <h5 class="card-header">Step 3 - Verification</h5>
+            <div class="card-body">
+            <h5 class="card-title">Determine if the image provided matches the record on file.</h5>
+            <p class="card-text">Confidence number indicates the similarity confidence of whether two faces belong to the same person.</p>
+            <figure class="text-center">
+                <img id="verified-image" src="" style="height: 100px;">
+                <h1 id="verified-status" class="display-1"></h1>
+                <p id="confidence-score" class="lead"></p>
+
+                <h1 id="person-name"></h1>
+                <p id="person-department" class="lead"></p>
+                <p id="person-title" class="lead"></p>
+                <p id="person-companyname" class="lead"></p>
+                
+            </figure>
+
+            </div>
+        </div>
+
+    
+
+        <script>
+            (function() {
+            // The width and height of the captured photo. We will set the
+            // width to the value defined here, but the height will be
+            // calculated based on the aspect ratio of the input stream.
+
+            var width = 320;    // We will scale the photo width to this
+            var height = 0;     // This will be computed based on the input stream
+
+            // |streaming| indicates whether or not we're currently streaming
+            // video from the camera. Obviously, we start at false.
+
+            var streaming = false;
+
+            // The various HTML elements we need to configure or control. These
+            // will be set by the startup() function.
+
+            var video = null;
+            var canvas = null;
+            var photo = null;
+            var startbutton = null;
+
+            function startup() {
+                video = document.getElementById('video');
+                canvas = document.getElementById('canvas');
+                photo = document.getElementById('photo');
+                startbutton = document.getElementById('startbutton');
+
+                navigator.mediaDevices.getUserMedia({video: true, audio: false})
+                .then(function(stream) {
+                video.srcObject = stream;
+                video.play();
+                })
+                .catch(function(err) {
+                console.log("An error occurred: " + err);
+                });
+
+                video.addEventListener('canplay', function(ev){
+                if (!streaming) {
+                    height = video.videoHeight / (video.videoWidth/width);
+                
+                    // Firefox currently has a bug where the height can't be read from
+                    // the video, so we will make assumptions if this happens.
+                
+                    if (isNaN(height)) {
+                    height = width / (4/3);
+                    }
+                
+                    video.setAttribute('width', width);
+                    video.setAttribute('height', height);
+                    canvas.setAttribute('width', width);
+                    canvas.setAttribute('height', height);
+                    streaming = true;
+                }
+                }, false);
+
+            
+                startbutton.addEventListener('click', function(ev){
+
+                    //clear the set fields
+                    document.getElementById("verified-status").innerHTML = "";
+                    document.getElementById("confidence-score").innerHTML = "";
+                    document.getElementById("verified-image").src = "";
+                    document.getElementById("person-name").innerHTML = "";
+                    document.getElementById("person-title").innerHTML = "";
+                    document.getElementById("person-companyname").innerHTML = "";
+                    document.getElementById("person-department").innerHTML = "";
+
+                    //validate the form
+                    var form = document.getElementById("salesforce-user-form")
+                    if (!form.checkValidity()) {
+                            event.preventDefault()
+                            event.stopPropagation()
+                        } else {
+                            getResponse(); //Call the new function
+                            ev.preventDefault();
+                        }
+                        form.classList.add('was-validated')
+                                 
+                }, false);
+                    
+                clearphoto();
+            }
+
+            function getResponse() {
+
+                var capture = takepicture(); //capture the image
+
+                var user = document.getElementById("datalistOptions");
+                var personId = user.value;
+                console.log(personId);
+
+                var data = {
+                    personId: personId,
+                    image: capture
+                }
+
+                console.log(data);
+
+                //https://a673886a4f8310312614eecfbb45bf1c.m.pipedream.net
+                //https://JitterbitTRIAL385622.jitterbit.eu/defaultUrlPrefix/1/faceApi
+                $.ajax({
+                    type: 'POST',
+                    url: 'https://JitterbitTRIAL385622.jitterbit.eu/defaultUrlPrefix/1/faceVerify',
+                    contentType: "json",
+                    data: JSON.stringify(data),
+                    success: function(response) { 
+                        var isIdentical = response.isIdentical;
+                        var confidence = response.confidence;
+
+                        console.log(response);
+        
+                        if(isIdentical === true) {
+                            document.getElementById("verified-status").innerHTML = "Verified";
+                            document.getElementById("confidence-score").innerHTML = "Confidence: " + confidence;
+                            document.getElementById("verified-image").src = "/assets/verified.png";
+                            document.getElementById("person-name").innerHTML = response.name;
+                            document.getElementById("person-title").innerHTML = response.title;
+                            document.getElementById("person-companyname").innerHTML = response.companyName;
+                            document.getElementById("person-department").innerHTML = response.department;
+                        } else {
+                            document.getElementById("verified-status").innerHTML = "Denied";
+                            document.getElementById("confidence-score").innerHTML = "Confidence: " + confidence;
+                            document.getElementById("verified-image").src = "/assets/denied.png";
+                        };
+                 
+                    },
+                    error: function(xhr, status, err) {
+                        console.log(xhr.responseText);
+                        alert("Egg on my face! Something went wrong. Usually due to there being 2 faces in the images!");
+                    }
+                });
+            }
+
+            // Fill the photo with an indication that none has been
+            // captured.
+
+            function clearphoto() {
+                var context = canvas.getContext('2d');
+                context.fillStyle = "#AAA";
+                context.fillRect(0, 0, canvas.width, canvas.height);
+
+                var data = canvas.toDataURL('image/jpeg');
+                photo.setAttribute('background.src', data);
+            }
+            
+            // Capture a photo by fetching the current contents of the video
+            // and drawing it into a canvas, then converting that to a PNG
+            // format data URL. By drawing it on an offscreen canvas and then
+            // drawing that to the screen, we can change its size and/or apply
+            // other changes before drawing it.
+
+            function takepicture() {
+                var context = canvas.getContext('2d');
+                if (width && height) {
+                canvas.width = width;
+                canvas.height = height;
+                context.drawImage(video, 0, 0, width, height);
+                
+                var data = canvas.toDataURL('image/jpeg');
+
+                var photocanvas = document.getElementById("photo");
+                var ctx = photocanvas.getContext("2d");
+
+                var image = new Image();
+                image.onload = function() {
+                    ctx.drawImage(image, 0, 0);
+                };
+                image.src = data;
+                //photo.setAttribute('background.src', data);
+                return data;
+                } else {
+                clearphoto();
+                }
+            }
+
+            // Set up our event listener to run the startup process
+            // once loading is complete.
+            window.addEventListener('load', startup, false);
+            })();
+        </script>
+
+
+    </div>
+
+<%- include('common/footer.ejs') %>

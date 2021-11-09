@@ -1,0 +1,275 @@
+<%- include('common/header.ejs') %>
+
+    <!-- Page content-->
+    <div class="container-fluid">
+        <h1 class="mt-4">Detect</h1>
+        <p>Use the Jitterbit API manager and workflows combined with Microsoft Azure Cognitive Services Face API to detect human faces in an image, return face rectangles, and optionally with faceIds, landmarks, and attributes.</p>
+
+        <div class="card">
+            <h5 class="card-header">Capture Photo</h5>
+            <div class="card-body">
+            <h5 class="card-title">Capture a photo of a your face using your webcam.</h5>
+            <p class="card-text">Ensure you allow your browser access to your webcam in order for this to work.</p>
+
+            <div class="row">
+                <div class="col-sm">
+                    <div class="text-center">
+                        <div class="camera">
+                            <video id="video" class="img-thumbnail">Video stream not available.</video>
+                            
+                        </div>
+                    </div>
+                    <canvas id="canvas">
+                    </canvas>
+                </div>
+                <div class="col-sm">
+                    <div class="text-center">
+                        <div class="output">
+                                <canvas id="photo" width="320" height="240" style="border:1px solid #d3d3d3;" class="img-thumbnail">
+                                Your browser does not support the HTML5 canvas tag.</canvas>
+                        </div>
+                    </div>
+                </div>
+                </div>
+
+            <button class="btn btn-primary" id="startbutton">Take photo</button>
+            </div>
+        </div>
+
+        <div class="card mt-5">
+            <h5 class="card-header">Drink Detctor</h5>
+            <div class="card-body">
+            <h5 class="card-title">Let Jitterbit and Azure determine what drink you need!</h5>
+            <p class="card-text">Azure Face API can detect emotion in face images.</p>
+
+            <h1 id="drink" class="display-4"></h1>
+            <h3 id="emotion"></h3>
+                <small id="drink-reason" class="text-muted"></small>
+       
+            </div>
+        </div>
+
+        <div class="card mt-5">
+            <h5 class="card-header">Results</h5>
+            <div class="card-body">
+                <h5 class="card-title">View the returned data from Azure Face API.</h5>
+                <p class="card-text">Attributes include age, gender, headPose, smile, facialHair, glasses, emotion, hair, makeup, occlusion, accessories, blur, exposure, noise and mask. Some of the results returned for specific attributes may not be highly accurate.</p>
+
+                <script>hljs.highlightAll();</script>
+                <pre><code class="language-json hljs" id="codeblock"></code></pre>
+
+            </div>
+        </div>
+
+    
+
+        <script>
+            (function() {
+            // The width and height of the captured photo. We will set the
+            // width to the value defined here, but the height will be
+            // calculated based on the aspect ratio of the input stream.
+
+            var width = 320;    // We will scale the photo width to this
+            var height = 0;     // This will be computed based on the input stream
+
+            // |streaming| indicates whether or not we're currently streaming
+            // video from the camera. Obviously, we start at false.
+
+            var streaming = false;
+
+            // The various HTML elements we need to configure or control. These
+            // will be set by the startup() function.
+
+            var video = null;
+            var canvas = null;
+            var photo = null;
+            var startbutton = null;
+
+            function startup() {
+                video = document.getElementById('video');
+                canvas = document.getElementById('canvas');
+                photo = document.getElementById('photo');
+                startbutton = document.getElementById('startbutton');
+
+                navigator.mediaDevices.getUserMedia({video: true, audio: false})
+                .then(function(stream) {
+                video.srcObject = stream;
+                video.play();
+                })
+                .catch(function(err) {
+                console.log("An error occurred: " + err);
+                });
+
+                video.addEventListener('canplay', function(ev){
+                if (!streaming) {
+                    height = video.videoHeight / (video.videoWidth/width);
+                
+                    // Firefox currently has a bug where the height can't be read from
+                    // the video, so we will make assumptions if this happens.
+                
+                    if (isNaN(height)) {
+                    height = width / (4/3);
+                    }
+                
+                    video.setAttribute('width', width);
+                    video.setAttribute('height', height);
+                    canvas.setAttribute('width', width);
+                    canvas.setAttribute('height', height);
+                    streaming = true;
+                }
+                }, false);
+
+                
+
+                startbutton.addEventListener('click', function(ev){
+                getResponse(); //Call the new function
+                ev.preventDefault();
+                }, false);
+                
+                clearphoto();
+            }
+
+            function getResponse() {
+                var capture = takepicture(); //capture the image
+
+                var data = { 
+                    image: capture
+                }
+
+                $.ajax({
+                    type: 'POST',
+                    url: 'https://JitterbitTRIAL385622.jitterbit.eu/defaultUrlPrefix/1/facedetect',
+                    contentType: "json",
+                    data: JSON.stringify(data),
+                    success: function(response) { 
+                        console.log(response);
+                        var left = response[0].faceRectangle.left;
+                        var top = response[0].faceRectangle.top;
+                        var width = response[0].faceRectangle.width;
+                        var height = response[0].faceRectangle.height;
+                        var emotion = response[0].faceAttributes.emotion;
+                     
+                        var emotionArray = [];
+                        const objectArray = Object.entries(emotion);
+
+                        const object2 = Object.fromEntries(
+                        Object.entries(emotion)
+                            .map(([ key, val ]) => [ key, val * 2 ])
+                        );
+                    
+                        var personEmotion = _.max(Object.keys(object2), function (o) {
+                            //console.log(object2[o]);
+                            return object2[o];
+                        });
+
+                        switch(personEmotion) {
+                        case 'anger':
+                            document.getElementById("drink").innerHTML = "Camomile Tea";
+                            document.getElementById("drink-reason").innerHTML = "You look angry! Breath, have a camomile tea.";
+                        break;
+                        case 'contempt':
+                            document.getElementById("drink").innerHTML = "Mint Tea";
+                            document.getElementById("drink-reason").innerHTML = "Lets refocus, Mint tea is required.";
+                        break;
+                        case 'disgust':
+                            document.getElementById("drink").innerHTML = "Sweet Tea";
+                            document.getElementById("drink-reason").innerHTML = "Disgusting! Why not have a sweet tea.";
+                        break;    
+                        case 'fear':
+                            document.getElementById("drink").innerHTML = "Coffee";
+                            document.getElementById("drink-reason").innerHTML = "Lets get those caffeine levels up!";
+                        break;
+                        case 'happiness':
+                            document.getElementById("drink").innerHTML = "Champagne";
+                            document.getElementById("drink-reason").innerHTML = "You look happy, why not have a glass of champagne!";
+                        break;
+                        case 'neutral':
+                            document.getElementById("drink").innerHTML = "Water";
+                            document.getElementById("drink-reason").innerHTML = "Looking neutral, have a water to rehydrate.";
+                        break;
+                        case 'sadness':
+                            document.getElementById("drink").innerHTML = "Herbal Tea";
+                            document.getElementById("drink-reason").innerHTML = "You look sad. Have a herbal tea.";
+                        break;
+                        case 'surprise':
+                            document.getElementById("drink").innerHTML = "Prosecco";
+                            document.getElementById("drink-reason").innerHTML = "What a surprise, lets open the prosecco!";
+                        break;
+                        default:
+                            // code block
+                        }
+                        document.getElementById("emotion").innerHTML = personEmotion;
+                      
+
+                        $("#codeblock").text(JSON.stringify(response,null, "  "));
+                        hljs.configure({ ignoreUnescapedHTML: true })
+                        hljs.highlightAll();
+
+                        var c = document.getElementById("photo");
+                        var ctx = c.getContext("2d");
+
+                        // Red rectangle
+                        ctx.beginPath();
+                        ctx.lineWidth = "6";
+                        ctx.strokeStyle = "red";
+                        ctx.rect(left, top, width, height);  //(x,y,width,height)
+                        ctx.stroke();
+                    },
+                    error: function(xhr, status, err) {
+                        console.log(xhr.responseText);
+                        alert("Egg on my face! Something went wrong. Usually due to there being 2 faces in the images!");
+                    }
+                });
+            }
+
+            // Fill the photo with an indication that none has been
+            // captured.
+
+            function clearphoto() {
+                var context = canvas.getContext('2d');
+                context.fillStyle = "#AAA";
+                context.fillRect(0, 0, canvas.width, canvas.height);
+
+                var data = canvas.toDataURL('image/jpeg');
+                photo.setAttribute('background.src', data);
+            }
+            
+            // Capture a photo by fetching the current contents of the video
+            // and drawing it into a canvas, then converting that to a PNG
+            // format data URL. By drawing it on an offscreen canvas and then
+            // drawing that to the screen, we can change its size and/or apply
+            // other changes before drawing it.
+
+            function takepicture() {
+                var context = canvas.getContext('2d');
+                if (width && height) {
+                canvas.width = width;
+                canvas.height = height;
+                context.drawImage(video, 0, 0, width, height);
+                
+                var data = canvas.toDataURL('image/jpeg');
+
+                var photocanvas = document.getElementById("photo");
+                var ctx = photocanvas.getContext("2d");
+
+                var image = new Image();
+                image.onload = function() {
+                    ctx.drawImage(image, 0, 0);
+                };
+                image.src = data;
+                return data;
+                } else {
+                clearphoto();
+                }
+            }
+
+            // Set up our event listener to run the startup process
+            // once loading is complete.
+            window.addEventListener('load', startup, false);
+            })();
+        </script>
+
+
+    </div>
+
+<%- include('common/footer.ejs') %>
