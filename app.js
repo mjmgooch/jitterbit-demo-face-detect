@@ -41,7 +41,7 @@
  function getSFDCUsers (callback) {
 
     axios
-    .get('https://JitterbitTRIAL385622.jitterbit.eu/defaultUrlPrefix/1/faceVerifyUsers')
+    .get('https://JitterbitTRIAL385622.jitterbit.eu/defaultUrlPrefix/1/getsalesforceusers')
     .then(res => {
         return callback(res);
     })
